@@ -1,0 +1,9 @@
+rules:
+- id: python.requests.no-timeout
+  message: requests call without timeout. Add timeout=… to avoid hangs and potential DoS.
+  severity: MEDIUM
+  languages: [python]
+  metadata: { cwe: "CWE-400" }
+  patterns:
+    - pattern: requests.$METH(...)
+    - pattern-not: requests.$METH(..., timeout=$T, ...)

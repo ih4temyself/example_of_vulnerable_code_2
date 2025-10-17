@@ -1,0 +1,23 @@
+rules:
+- id: python.flask.ssti.render-template-string.user-input
+  message: possible XSS — user input flows into render_template_string().
+  severity: HIGH
+  languages: [python]
+  mode: taint
+  metadata:
+    cwe: "CWE-1336"
+    owasp: "A03:2021-Injection"
+  pattern-sources:
+    - pattern: request.$M(...)
+  pattern-sinks:
+    - pattern: render_template_string($HTML, ...)
+  pattern-propagators:
+    - pattern: $H = f"...{$X}..."
+      from: $X
+      to: $H
+    - pattern: $H = $A + $B
+      from: $A
+      to: $H
+    - pattern: $H = $A + $B
+      from: $B
+      to: $H

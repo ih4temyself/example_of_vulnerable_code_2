@@ -1,0 +1,15 @@
+rules:
+- id: rules.flask.unauthenticated_user_dump
+  message: route returns raw user list. require auth and redact PII.
+  severity: ERROR
+  languages: [python]
+  metadata: { cwe: "CWE-200", owasp: "A01:2021" }
+  patterns:
+    - pattern: |
+        @app.route($PATH, methods=[...])
+        def $F(...):
+            ...
+            $CUR.execute("SELECT * FROM users")
+            $USERS = $CUR.fetchall()
+            ...
+            return str($USERS)

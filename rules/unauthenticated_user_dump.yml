@@ -1,0 +1,15 @@
+rules:
+- id: python.flask.unauthenticated-user-dump
+  message: returns raw user list. Require auth
+  severity: HIGH
+  languages: [python]
+  metadata: { cwe: "CWE-200", owasp: "A01:2021" }
+  patterns:
+    - pattern: |
+        @app.route($PATH, methods=[...])
+        def $F(...):
+            ...
+            $CUR.execute("SELECT * FROM users")
+            $USERS = $CUR.fetchall()
+            ...
+            return str($USERS)

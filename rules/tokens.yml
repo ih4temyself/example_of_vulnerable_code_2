@@ -1,0 +1,86 @@
+rules:
+
+- id: secrets.telegram.bot-token
+  message: Hardcoded Telegram bot token detected. Move to a secrets manager or env var.
+  severity: HIGH
+  languages: [generic]
+  metadata:
+    cwe: "CWE-798"
+    tags: [secrets, telegram]
+  pattern-regex: '\b\d{6,12}:[A-Za-z0-9_-]{20,}\b'
+
+- id: secrets.openai.api-key
+  message: Hardcoded OpenAI API key detected. Rotate and store in env/secret manager.
+  severity: HIGH
+  languages: [generic]
+  metadata:
+    cwe: "CWE-798"
+    tags: [secrets, openai]
+  pattern-regex: '\bsk-[A-Za-z0-9]{20,100}\b'
+
+
+- id: secrets.github.pat
+  message: Hardcoded GitHub token detected. Rotate and move to a secret manager.
+  severity: HIGH
+  languages: [generic]
+  metadata:
+    cwe: "CWE-798"
+    tags: [secrets, github]
+  pattern-either:
+    - pattern-regex: '\bghp_[A-Za-z0-9]{36}\b'
+    - pattern-regex: '\bgithub_pat_[A-Za-z0-9_]{20,}\b'
+
+- id: secrets.slack.token
+  message: Hardcoded Slack token detected.
+  severity: HIGH
+  languages: [generic]
+  metadata:
+    cwe: "CWE-798"
+    tags: [secrets, slack]
+  pattern-regex: '\bxox[a-z]-[A-Za-z0-9-]{10,}\b'
+
+- id: secrets.stripe.api-key
+  message: Hardcoded Stripe API key detected.
+  severity: HIGH
+  languages: [generic]
+  metadata:
+    cwe: "CWE-798"
+    tags: [secrets, stripe]
+  pattern-regex: '\bsk_(live|test)_[A-Za-z0-9]{10,}\b'
+
+- id: secrets.aws.access-key-id
+  message: AWS Access Key ID found. If paired with a secret, this is highly sensitive.
+  severity: MEDIUM
+  languages: [generic]
+  metadata:
+    cwe: "CWE-200"
+    tags: [secrets, aws]
+  pattern-regex: '\b(A3T|AKIA|ASIA)[0-9A-Z]{16}\b'
+
+- id: secrets.aws.secret-access-key
+  message: AWS Secret Access Key detected.
+  severity: HIGH
+  languages: [generic]
+  metadata:
+    cwe: "CWE-798"
+    tags: [secrets, aws]
+  pattern-regex: '\b[0-9A-Za-z/+]{40}\b'
+
+- id: secrets.google.api-key
+  message: Hardcoded Google API key detected.
+  severity: HIGH
+  languages: [generic]
+  metadata:
+    cwe: "CWE-798"
+    tags: [secrets, google]
+  pattern-regex: '\bAIza[0-9A-Za-z_\-]{35}\b'
+
+
+- id: secrets.discord.bot-token
+  message: Hardcoded Discord bot token detected.
+  severity: HIGH
+  languages: [generic]
+  metadata:
+    cwe: "CWE-798"
+    tags: [secrets, discord]
+  pattern-regex: '\b\d{17,20}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27}\b'
