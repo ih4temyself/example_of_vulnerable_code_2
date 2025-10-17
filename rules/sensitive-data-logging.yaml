@@ -1,0 +1,28 @@
+rules:
+- id: python.logging.sensitive-data
+  message: |
+    Sensitive or user-controlled data may be logged.
+    Avoid logging passwords, tokens, or raw user input. 
+    Use structured logging and sanitize inputs before logging.
+  severity: HIGH
+  languages: [python]
+  metadata:
+    cwe: "CWE-532"
+    owasp: "A09:2021 - Security Logging and Monitoring Failures"
+  patterns:
+    - pattern-either:
+        # Common Python logging APIs
+        - pattern: logging.$LEVEL($MSG)
+        - pattern: app.logger.$LEVEL($MSG)
+        - pattern: logger.$LEVEL($MSG)
+        # Custom helper functions
+        - pattern: log_*($ARGS)
+    # Match sensitive data being logged
+    - metavariable-pattern:
+        metavariable: $MSG
+        pattern-regex: (?i)(password|passwd|pass|token|secret|apikey|auth[_-]?token|bearer|session)
+  fix: |
+    Remove sensitive data from logs or mask it before logging.
+    Example:
+      masked_token = token[:4] + "****"
+      app.logger.info(f"User token: {masked_token}")

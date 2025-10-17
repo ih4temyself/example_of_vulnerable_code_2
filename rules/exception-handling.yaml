@@ -1,0 +1,34 @@
+rules:
+- id: python.flask.no-error-handling-in-post
+  message: |
+    Flask POST route has no error handling (try/except). 
+    Add error handling or response logic for failed operations.
+  severity: MEDIUM
+  languages: [python]
+  metadata:
+    cwe: "CWE-703"
+    owasp: "A09:2021 - Security Logging and Monitoring Failures"
+  patterns:
+    # Match any POST route
+    - pattern: |
+        @app.route($ROUTE, methods=[$METHODS])
+        def $FUNC(...):
+            ...
+    - metavariable-pattern:
+        metavariable: $METHODS
+        pattern-regex: (?i).*POST.*
+    # Exclude if function contains try/except
+    - pattern-not-inside: |
+        def $FUNC(...):
+            try:
+                ...
+            except $E:
+                ...
+  fix: |
+    Wrap potentially failing operations in try/except and handle errors properly.
+    Example:
+      try:
+          result = send_telegram_message(user_id, message)
+      except Exception as e:
+          app.logger.error(f"Send failed: {e}")
+          return "Error sending notification", 500

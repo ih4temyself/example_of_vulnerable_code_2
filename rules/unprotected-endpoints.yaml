@@ -1,0 +1,43 @@
+rules:
+- id: python.flask.unprotected-sensitive-endpoints
+  message: |
+    Flask endpoint appears to expose sensitive functionality or data without authentication.
+    Protect these endpoints with authentication (API key, OAuth, JWT, or admin secret)
+    and avoid returning raw database results or credentials.
+  severity: HIGH
+  languages: [python]
+  metadata:
+    cwe: "CWE-284"
+    owasp: "A01:2021 - Broken Access Control"
+  patterns:
+    # Match Flask routes
+    - pattern: |
+        @app.route($ROUTE, methods=[$METHODS])
+        def $FUNC(...):
+            ...
+    # Detect possible sensitive endpoints or behavior
+    - metavariable-pattern:
+        metavariable: $ROUTE
+        pattern-regex: (?i)(send|notify|bot|admin|user|command|login|data|export|dump)
+    # Exclude functions that perform authentication/authorization checks
+    - pattern-not-inside: |
+        def $FUNC(...):
+            if not (request.headers.get("Authorization") or request.cookies.get("token") or current_user.is_authenticated):
+                ...
+    - pattern-not-inside: |
+        @login_required
+        def $FUNC(...):
+            ...
+    - pattern-not-inside: |
+        @jwt_required(...)
+        def $FUNC(...):
+            ...
+  fix: |
+    Protect sensitive routes with authentication and authorization checks.
+    Example:
+      from flask_jwt_extended import jwt_required
+
+      @app.route('/send_notification', methods=['POST'])
+      @jwt_required()
+      def send_notification():
+          ...

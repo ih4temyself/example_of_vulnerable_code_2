@@ -1,0 +1,23 @@
+rules:
+- id: python.flask.no-input-validation
+  message: |
+    Unvalidated user input used directly from request.form or request.json.
+    Validate and sanitize input before use (e.g., type, length, format checks).
+  severity: MEDIUM
+  languages: [python]
+  metadata:
+    cwe: "CWE-20"
+    owasp: "A05:2021 - Security Misconfiguration"
+  patterns:
+    # Direct use of form fields
+    - pattern-either:
+        - pattern: $VAR = request.form[$FIELD]
+        - pattern: $VAR = request.json[$FIELD]
+        - pattern: $VAR = request.args[$FIELD]
+    # Exclude cases where validation function is applied immediately
+    - pattern-not: $VAR = validate_input(request.form[$FIELD])
+    - pattern-not: $VAR = validate_json(request.json[$FIELD])
+  fix: |
+    Validate and sanitize all user input before using it.
+    Example:
+      user_id = int(request.form["user_id"]) if request.form["user_id"].isdigit() else abort(400)

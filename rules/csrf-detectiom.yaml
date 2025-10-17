@@ -1,0 +1,42 @@
+rules:
+- id: python.flask.no-csrf-protection
+  message: |
+    Flask route without CSRF protection. Add CSRF tokens (Flask-WTF or similar)
+    or require an API key/header for API endpoints.
+  severity: HIGH
+  languages: [python]
+  metadata:
+    cwe: "CWE-352"
+    owasp: "A05:2021 - Security Misconfiguration"
+  patterns:
+    # Match route definitions that handle POST or unsafe methods
+    - pattern: |
+        @app.route($ROUTE, methods=[$METHODS])
+        def $FUNC(...):
+            ...
+    - pattern-inside: |
+        @app.route($ROUTE, methods=[$METHODS])
+        def $FUNC(...):
+            ...
+    - metavariable-pattern:
+        metavariable: $METHODS
+        pattern-regex: (?i).*POST.*
+    # Exclude if CSRF protection decorator is present
+    - pattern-not-inside: |
+        @csrf.exempt
+        def $FUNC(...):
+            ...
+    - pattern-not-inside: |
+        @csrf_protect
+        def $FUNC(...):
+            ...
+    - pattern-not-inside: |
+        @csrf
+        def $FUNC(...):
+            ...
+    - pattern-not-inside: |
+        @CSRF
+        def $FUNC(...):
+            ...
+  fix: |
+    Protect POST routes with CSRF tokens or API key headers.
