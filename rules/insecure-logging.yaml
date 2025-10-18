@@ -1,0 +1,26 @@
+rules:
+- id: python.logging.sensitive-or-unsafe-log
+  message: |
+    Possible sensitive or unsafe logging detected. 
+    Avoid logging user-controlled input directly — sanitize and escape newlines. 
+    Set up logging once at startup and use structured logging.
+  severity: MEDIUM
+  languages: [python]
+  metadata:
+    cwe: "CWE-117"
+    owasp: "A09:2021 - Security Logging and Monitoring Failures"
+  patterns:
+    - pattern-either:
+        # Generic logging calls
+        - pattern: logging.$LEVEL($MSG)
+        - pattern: app.logger.$LEVEL($MSG)
+        # Custom log helper
+        - pattern: log_user_action($USER, $DETAILS)
+    - metavariable-pattern:
+        metavariable: $MSG
+        pattern-regex: (request\.form|request\.args|request\.json|username|password)
+  fix: |
+    Sanitize log input before logging and avoid including passwords or raw user input.
+    Example:
+      safe_user = sanitize_input(username)
+      app.logger.info(f"Login attempt by {safe_user}")
