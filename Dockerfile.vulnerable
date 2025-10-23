@@ -1,0 +1,8 @@
+FROM ubuntu:latest
+COPY app/ /app
+WORKDIR /app
+RUN apt-get update && apt-get install -y python3
+RUN useradd -m appuser && chown -R appuser:appuser /app
+USER appuser
+CMD ["python3", "app.py"]
+EXPOSE 8080

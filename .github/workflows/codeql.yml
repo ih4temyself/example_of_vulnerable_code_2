@@ -9,15 +9,15 @@ name: CodeQL Scan
 on:
   # 🔹 Запуск аналізу при кожному push у головну гілку
   push:
-    branches: [ main ]
+    branches: [ dev ]
 
   # 🔹 Аналіз змін у pull request до main
   pull_request:
-    branches: [ main ]
+    branches: [ dev ]
 
   # 🔹 Плановий щотижневий запуск (понеділок о 10:19 UTC)
-  schedule:
-    - cron: '19 10 * * 1'
+  #schedule:
+  #  - cron: '19 10 * * 1'
 
 jobs:
   analyze:
