@@ -3,108 +3,178 @@
 import os
 import cv2
 import time
-import sys
-import pymysql
-import time
-import requests
 import socket
+import logging
 from multiprocessing import Pool
 import configparser
-import substream
+import pymysql
+import requests
+from pathlib import Path
+from typing import List, Tuple, Optional
+
+CONFIG_PATH = os.getenv("VIDEO_CONFIG_PATH", "/root/scripts/VIDEO/config.ini")
+IMAGE_DIR = Path(os.getenv("SCAN_IMAGE_DIR", "/var/www/html/scan"))
+IMAGE_URL_BASE = os.getenv("SCAN_IMAGE_URL_BASE")
+POOL_PROCESSES = int(os.getenv("POOL_PROCESSES", str(max(4, (os.cpu_count() or 2) * 2))))
+SLEEP_SECONDS = int(os.getenv("SLEEP_SECONDS", "300"))
+REQUEST_TIMEOUT = float(os.getenv("REQUEST_TIMEOUT", "8.0"))
+
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage" if TELEGRAM_BOT_TOKEN else None
+
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO"),
+    format="%(asctime)s %(levelname)s %(message)s"
+)
+logger = logging.getLogger(__name__)
+
+IMAGE_DIR.mkdir(parents=True, exist_ok=True)
 
 config = configparser.ConfigParser()
-config.read("/root/scripts/VIDEO/config.ini")
-host_ip = socket.gethostbyname(socket.gethostname())
+read_files = config.read(CONFIG_PATH)
+if not read_files:
+    logger.warning("config file not found at %s; ensure DB env vars or config file exist", CONFIG_PATH)
 
+DB_HOST = os.getenv("MYSQL_HOST", config.get("MySQL", "host", fallback=None))
+DB_USER = os.getenv("MYSQL_USER", config.get("MySQL", "user", fallback=None))
+DB_PASS = os.getenv("MYSQL_PASSWORD", config.get("MySQL", "password", fallback=None))
+DB_NAME = os.getenv("MYSQL_DATABASE", config.get("MySQL", "database", fallback=None))
 
-def get_cursor():
-    connection = pymysql.connect(
-        host=config['MySQL']['host'],
-        user=config['MySQL']['user'],
-        password=config['MySQL']['password'],
-        database=config['MySQL']['database'])
+if not all([DB_HOST, DB_USER, DB_PASS, DB_NAME]):
+    raise RuntimeError("database configuration is incomplete, provide via config file or environment variables")
 
-    return connection.cursor(), connection
-
-
-def select_ip_list():
-    cursor, connection = get_cursor()
-    cursor = connection.cursor()
-    query = f"""SELECT `ip`, CONCAT(REPLACE(`ip`,'.','_'), '-' , `country_code`, '-', `region`, '-', `city`) as 'name_camera'
-            FROM rtsp_scan where `url` is NULL and `up` = '{os.uname()[1]}';"""
-    cursor.execute(query)
-    return cursor.fetchall()
-
-
-
-cursor, connection = get_cursor()
-cursor = connection.cursor()
-query = "SELECT `path`, `login`, `passwd` FROM `view_support_path_default`"
-cursor.execute(query)
-link_list = cursor.fetchall()
-
-#link_list = []
-#for i in rows:
-#    link_list.append(i[0])
-
-
-def insert_url(link_one, ip, link, login, passwd):
-    cursor, con = get_cursor()
-    cursor = con.cursor()
-
-    query = f"""UPDATE `rtsp_scan` SET `url` = '{link_one}', `up` = '{os.uname()[1]}', `link` = '{link}', `login` = '{login}', `passwd` = '{passwd}'
-                WHERE `ip` = '{ip}';"""
-    print(query)
-    cursor.execute(query)
-    con.commit()
-
-
-def job(ip):
-
+def _get_host_ip() -> str:
     try:
-        cap = cv2.VideoCapture(ip[0])
-        ret, frame = cap.read()
-        if ret:
-            print(ip)
-            name_file = f"/var/www/html/scan/{ip[2]}.jpg"
-            url_link = f"http://admin:sdcsdtu-GdgLLJmm@{host_ip}/scan/{ip[2]}.jpg"
-            cv2.imwrite(name_file, frame)
+        return socket.gethostbyname(socket.gethostname())
 
-            insert_url(ip[0], ip[1], url_link, ip[3], ip[4])
+    except Exception:
+        return "127.0.0.1"
+
+HOST_IP = _get_host_ip()
+HOSTNAME = socket.gethostname()
+
+
+
+def get_connection():
+    return pymysql.connect(
+        host=DB_HOST,
+        user=DB_USER,
+        password=DB_PASS,
+        database=DB_NAME,
+        autocommit=False,
+        cursorclass=pymysql.cursors.Cursor,
+    )
+
+def select_ip_list(up_host: str) -> List[Tuple[str, str, str]]:
+    sql = (
+        "SELECT `ip`, CONCAT(REPLACE(`ip`,'.','_'), '-', `country_code`, '-', `region`, '-', `city`) AS name_camera "
+        "FROM rtsp_scan WHERE `url` IS NULL AND `up` = %s;"
+    )
+    with get_connection() as con:
+        with con.cursor() as cur:
+            cur.execute(sql, (up_host,))
+            return cur.fetchall()
+
+def get_view_support_paths() -> List[Tuple[str, Optional[str], Optional[str]]]:
+    sql = "SELECT `path`, `login`, `passwd` FROM `view_support_path_default`"
+    with get_connection() as con:
+        with con.cursor() as cur:
+            cur.execute(sql)
+            return cur.fetchall()
+
+def insert_url(url_to_store: str, ip: str, link: str, login: Optional[str], passwd: Optional[str]) -> None:
+    sql = (
+        "UPDATE `rtsp_scan` SET `url` = %s, `up` = %s, `link` = %s, `login` = %s, `passwd` = %s "
+        "WHERE `ip` = %s;"
+    )
+    with get_connection() as con:
+        with con.cursor() as cur:
+            cur.execute(sql, (url_to_store, HOSTNAME, link, login, passwd, ip))
+        con.commit()
+
+def safe_filename(name: str) -> str:
+    return "".join(c if (c.isalnum() or c in "-_") else "_" for c in name)
+
+def build_image_url(filename: str) -> str:
+    base = IMAGE_URL_BASE or f"http://{HOST_IP}/scan"
+    return f"{base.rstrip('/')}/{filename}"
+
+def job(task: Tuple[str, str, str, Optional[str], Optional[str]]) -> None:
+    rtsp_url, ip, name_camera, login, passwd = task
+    try:
+        cap = cv2.VideoCapture(rtsp_url)
+        ok, frame = cap.read()
+        cap.release()
+        if not ok or frame is None:
             return
 
-        else:
-            return
+        filename = f"{safe_filename(name_camera)}.jpg"
+        image_path = IMAGE_DIR / filename
+        cv2.imwrite(str(image_path), frame)
+
+        public_url = build_image_url(filename)
+
+        insert_url(rtsp_url, ip, public_url, login, passwd)
+
     except Exception as e:
+        logger.error("job failed for IP %s: %s", ip, e)
+
+
+
+def main() -> None:
+    link_list = get_view_support_paths()
+    if not link_list:
+        logger.warning("no support paths found")
         return
 
+    for link_path, login, passwd in link_list:
+        rows = select_ip_list(HOSTNAME)
+        if not rows:
+            logger.info("no ips to process for host '%s' right now", HOSTNAME)
+            continue
 
-def main():
-    for link in link_list:
-        rtsp_list = []
-        for ip in select_ip_list():
-            rtsp_list.append([link[0].replace('ip_for_replace', ip[0]), ip[0], ip[1], link[1], link[2]])
+        tasks = []
+        for ip, name_camera in rows:
+            rtsp_url = link_path.replace('ip_for_replace', ip)
+            tasks.append((rtsp_url, ip, name_camera, login, passwd))
 
         start = time.time()
-        with Pool(processes=200) as p:
-            p.map(job, rtsp_list)
-        print("And start sleep")
-        end = time.time()
-        sl_tm = 300 - int((end - start))
-        print(sl_tm)
-        if sl_tm > 0:
-            time.sleep(sl_tm) # чекаємо 5 хв
+        processes = max(2, min(POOL_PROCESSES, 64))
+        logger.info("starting pool with %d processes for %d tasks", processes, len(tasks))
+        with Pool(processes=processes) as p:
+            p.map(job, tasks)
 
+        elapsed = int(time.time() - start)
+        sleep_for = max(0, SLEEP_SECONDS - elapsed)
+        logger.info("cycle took %ss; sleeping for %ss", elapsed, sleep_for)
+        if sleep_for:
+            time.sleep(sleep_for)
+
+def notify_telegram(message: str) -> None:
+    if not (TELEGRAM_API_URL and TELEGRAM_CHAT_ID):
+        return
+    
+    try:
+        requests.post(
+            TELEGRAM_API_URL,
+            json={"chat_id": TELEGRAM_CHAT_ID, "text": message},
+            timeout=REQUEST_TIMEOUT,
+        )
+
+    except Exception as e:
+        logger.warning("telegram notification failed: %s", e)
 
 if __name__ == "__main__":
     start_time = time.time()
     main()
-    done = time.time() - start_time
-
-    TOKEN = '5410845659:AAHKyxGyjRUZG-b_iNC52M7xiSPlHDLZMOw'
-    CHAT_ID = '-1001533673238'
-    SEND_URL = f'https://api.telegram.org/bot{TOKEN}/sendMessage'
-
-    requests.post(SEND_URL, json={'chat_id': CHAT_ID, 'text': f"41_scan_stream_default done - {int(done)}"})
-    substream.main()
+    done = int(time.time() - start_time)
+    notify_telegram(f"41_scan_stream_default done - {done}")
     
+    try:
+        import substream
+        if hasattr(substream, "main"):
+            substream.main()
+
+    except Exception as e:
+        logger.warning("substream call failed: %s", e)
