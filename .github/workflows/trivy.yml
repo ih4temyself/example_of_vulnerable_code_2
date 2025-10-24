@@ -1,9 +1,9 @@
+#added a little more to trivy scanners to vuln, misconfig, secret so one run finds vulnerable deps, insecure configs and hardcoded secrets.
 name: Trivy Security Scan
 
 on:
   push:
     branches: [ main ]
-
   pull_request:
     branches: [ main ]
 
@@ -18,16 +18,32 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+      - name: Trivy (SARIF report)
+        uses: aquasecurity/trivy-action@v0.33.1
         with:
           scan-type: 'fs'
+          scan-ref: '.'
+          scanners: 'vuln,misconfig,secret'
           ignore-unfixed: true
           format: 'sarif'
           output: 'trivy-results.sarif'
-          severity: 'CRITICAL'
+          severity: 'HIGH,CRITICAL'
+          limit-severities-for-sarif: true
+          exit-code: '0'
 
       - name: Upload results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: 'trivy-results.sarif'
+
+      - name: Trivy (gate on HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@v0.33.1
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          scanners: 'vuln,misconfig,secret'
+          ignore-unfixed: true
+          format: 'table'
+          severity: 'HIGH,CRITICAL'
+          exit-code: '1'
+          skip-setup-trivy: true
